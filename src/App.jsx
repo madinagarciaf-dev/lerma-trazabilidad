@@ -1121,7 +1121,7 @@ function HelpAttachmentViewer({ attachments = [] }) {
 // ─── App ──────────────────────────────────────────────────────
 export default function App() {
   const store = useStore();
-  return <BrowserRouter><Shell store={store} /></BrowserRouter>;
+  return <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/+$/, '')}><Shell store={store} /></BrowserRouter>;
 }
 
 function Shell({ store }) {
