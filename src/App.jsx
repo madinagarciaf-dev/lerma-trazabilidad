@@ -145,30 +145,63 @@ const SEED = {
     },
   ],
 
-  // ── GPs de elementos trazables por variante (simula datos de SAP / AtlantIA) ──
-  traceableGpsByVariant: {
-    "V5X-200": [
+  // ── GPs de elementos trazables por variante + fase (simula datos de SAP / AtlantIA) ──
+  // Clave: `${variantCode}__${phaseCode}` → lista de GPs aplicables a esa fase
+  traceableGpsByVariantPhase: {
+    // Variante V5X-200 (plataforma 5X)
+    "V5X-200__P01": [
       { gpCode: "A9X000001", name: "Rodamiento principal" },
       { gpCode: "A9X000021", name: "Sello de estanqueidad" },
+    ],
+    "V5X-200__P02": [
       { gpCode: "A9X000031", name: "Eje intermedio" },
-      { gpCode: "A9X000041", name: "Casquillo de ajuste" },
       { gpCode: "A9X000051", name: "Corona dentada" },
     ],
-    "V5X-300": [
+    "V5X-200__P03": [
+      { gpCode: "A9X000041", name: "Casquillo de ajuste" },
+    ],
+    "V5X-200__P04": [
+      { gpCode: "A9X000051", name: "Corona dentada" },
+      { gpCode: "A9X000041", name: "Casquillo de ajuste" },
+    ],
+
+    // Variante V5X-300
+    "V5X-300__P01": [
       { gpCode: "A9X000001", name: "Rodamiento principal" },
+    ],
+    "V5X-300__P02": [
+      { gpCode: "A9X000031", name: "Eje intermedio" },
       { gpCode: "A9X000021", name: "Sello de estanqueidad" },
+    ],
+    "V5X-300__P04": [
       { gpCode: "A9X000031", name: "Eje intermedio" },
     ],
-    "V4X-100": [
+
+    // Variante V4X-100
+    "V4X-100__P01": [
       { gpCode: "A9X000001", name: "Rodamiento principal" },
+    ],
+    "V4X-100__P02": [
       { gpCode: "A9X000021", name: "Sello de estanqueidad" },
     ],
-    "V4X-150": [
-      { gpCode: "A9X000001", name: "Rodamiento principal" },
+    "V4X-100__P03": [
       { gpCode: "A9X000021", name: "Sello de estanqueidad" },
+    ],
+
+    // Variante V4X-150
+    "V4X-150__P01": [
+      { gpCode: "A9X000001", name: "Rodamiento principal" },
+    ],
+    "V4X-150__P02": [
+      { gpCode: "A9X000061", name: "Piñón solar" },
+      { gpCode: "A9X000021", name: "Sello de estanqueidad" },
+    ],
+    "V4X-150__P03": [
       { gpCode: "A9X000061", name: "Piñón solar" },
     ],
-    "V3X-050": [
+
+    // Variante V3X-050
+    "V3X-050__P01": [
       { gpCode: "A9X000001", name: "Rodamiento principal" },
     ],
   },
@@ -615,9 +648,11 @@ const fakeApi = {
     if (!wk) return [];
     return initialState.plannedUnits.filter((u) => u.year === wk.year && u.week === wk.week);
   },
-  async getTraceableGpsForVariant(variantCode) {
+  async getTraceableGpsForVariantPhase(variantCode, phaseCode) {
     await this.delay(100);
-    return deepClone(SEED.traceableGpsByVariant[variantCode] || []);
+    if (!variantCode || !phaseCode) return [];
+    const key = `${variantCode}__${phaseCode}`;
+    return deepClone(SEED.traceableGpsByVariantPhase[key] || []);
   },
   async getTraceableValidation(traceableGpCode, serial) {
     await this.delay(280);
@@ -2197,7 +2232,7 @@ function OperarioPhaseDetail({ store }) {
                       </div>
                     </div>
                     <div className="mt-3">
-                      <AnswerField question={q} value={answers[q.id] || {}} store={store} unit={unit} phaseTxId={phaseTx.id}
+                      <AnswerField question={q} value={answers[q.id] || {}} store={store} unit={unit} phaseTxId={phaseTx.id} phaseCode={phaseDef.phaseCode}
                         onChange={(nextValue) => store.dispatch({ type: "SET_ANSWER", phaseTxId: phaseTx.id, questionId: q.id, value: nextValue })} />
                     </div>
                   </div>
@@ -2297,10 +2332,10 @@ function OperarioPhaseDetail({ store }) {
 }
 
 // ── AnswerField ──
-function AnswerField({ question, value, onChange, disabled = false, store, unit, phaseTxId }) {
+function AnswerField({ question, value, onChange, disabled = false, store, unit, phaseTxId, phaseCode }) {
   const current = value?.value ?? "";
 
-  if (question.answerType === "TRACEABLE") return <TraceableField question={question} answer={value} onChange={onChange} disabled={disabled} store={store} unit={unit} />;
+  if (question.answerType === "TRACEABLE") return <TraceableField question={question} answer={value} onChange={onChange} disabled={disabled} store={store} unit={unit} phaseCode={phaseCode} />;
   if (question.answerType === "MASTER_TABLE") return <MasterTableField question={question} value={current} onChange={onChange} disabled={disabled} store={store} />;
   if (question.answerType === "TEXT") return <Input disabled={disabled} value={current} onChange={(e) => onChange({ value: e.target.value })} placeholder="Texto…" />;
   if (question.answerType === "NUMBER") return <Input disabled={disabled} type="number" value={current} onChange={(e) => onChange({ value: clampNumber(e.target.value) })} placeholder="0" />;
@@ -2339,13 +2374,14 @@ function AnswerField({ question, value, onChange, disabled = false, store, unit,
 }
 
 // ── TraceableField ──
-function TraceableField({ question, answer = {}, onChange, disabled, store, unit }) {
+function TraceableField({ question, answer = {}, onChange, disabled, store, unit, phaseCode }) {
   const [gps, setGps] = useState([]);
   const [validating, setValidating] = useState(false);
 
   useEffect(() => {
-    if (unit?.variantCode) fakeApi.getTraceableGpsForVariant(unit.variantCode).then(setGps);
-  }, [unit?.variantCode]);
+    if (unit?.variantCode && phaseCode) fakeApi.getTraceableGpsForVariantPhase(unit.variantCode, phaseCode).then(setGps);
+    else setGps([]);
+  }, [unit?.variantCode, phaseCode]);
 
   const selectedGp = answer?.gpCode || "";
   const serial = answer?.serial || "";
